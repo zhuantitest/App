@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  email              String              @unique
+  password           String
+  createdAt          DateTime            @default(now())
+  isVerified         Boolean             @default(false)
+  accounts           Account[]
+  emailVerifications EmailVerification[]
+  groups             GroupMember[]
+  notifications      Notification[]
+  records            Record[]
+  splitsPaid         Split[]             @relation("PaidBy")
+  splitParticipants  SplitParticipant[]
+  unclassifiedNotes  UnclassifiedNote[]
+  BudgetSetting      BudgetSetting[]
+  BucketMap          BucketMap[]
+}
+
+model EmailVerification {
+  id        Int      @id @default(autoincrement())
+  email     String
+  code      String
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userId    Int
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, createdAt])
+  @@index([email, used])
+  @@index([userId])
+}
+
+model Group {
+  id            Int             @id @default(autoincrement())
+  name          String
+  joinCode      String?         @unique
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @default(now()) @updatedAt
+  members       GroupMember[]
+  records       Record[]
+  splits        Split[]
+  BudgetSetting BudgetSetting[]
+}
+
+model GroupMember {
+  id      Int    @id @default(autoincrement())
+  groupId Int
+  userId  Int
+  role    String @default("member")
+  group   Group  @relation(fields: [groupId], references: [id])
+  user    User   @relation(fields: [userId], references: [id])
+
+  @@unique([groupId, userId])
+  @@index([userId], map: "GroupMember_userId_fkey")
+}
+
+model Account {
+  id                Int          @id @default(autoincrement())
+  name              String
+  type              String
+  balance           Float        @default(0)
+  creditLimit       Float?
+  currentCreditUsed Float?       @default(0)
+  allowanceDay      Int?
+  userId            Int
+  accountNumber     String?
+  bankCode          String?
+  bankName          String?
+  billingDay        Int?
+  branchName        String?
+  cardIssuer        String?
+  cardLast4         String?
+  cardNetwork       String?
+  kind              AccountKind?
+  paymentDueDay     Int?
+  user              User         @relation(fields: [userId], references: [id])
+  records           Record[]
+
+  @@unique([userId, bankCode, accountNumber])
+  @@unique([userId, cardIssuer, cardLast4])
+  @@index([userId, kind])
+  @@index([userId, type])
+}
+
+model Record {
+  id            Int      @id @default(autoincrement())
+  amount        Float
+  note          String
+  category      String
+  createdAt     DateTime @default(now())
+  paymentMethod String
+  accountId     Int
+  groupId       Int?
+  userId        Int
+  imageUrl      String?
+  quantity      Int      @default(1)
+  account       Account  @relation(fields: [accountId], references: [id])
+  group         Group?   @relation(fields: [groupId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([accountId], map: "Record_accountId_fkey")
+  @@index([groupId], map: "Record_groupId_fkey")
+  @@index([userId], map: "Record_userId_fkey")
+}
+
+model Split {
+  id           Int                @id @default(autoincrement())
+  groupId      Int
+  amount       Float
+  description  String?
+  dueType      String
+  dueDate      DateTime?
+  isSettled    Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  paidById     Int
+  monthKey     String?
+  group        Group              @relation(fields: [groupId], references: [id])
+  paidBy       User               @relation("PaidBy", fields: [paidById], references: [id])
+  participants SplitParticipant[]
+
+  @@index([groupId], map: "Split_groupId_fkey")
+  @@index([paidById], map: "Split_paidById_fkey")
+}
+
+model SplitParticipant {
+  id      Int     @id @default(autoincrement())
+  splitId Int
+  userId  Int
+  amount  Float
+  isPaid  Boolean @default(false)
+  split   Split   @relation(fields: [splitId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([splitId, userId])
+  @@index([userId], map: "SplitParticipant_userId_fkey")
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  message   String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "Notification_userId_fkey")
+}
+
+model UnclassifiedNote {
+  id        Int      @id @default(autoincrement())
+  note      String
+  createdAt DateTime @default(now())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "UnclassifiedNote_userId_fkey")
+}
+
+model UserLexicon {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  term           String
+  normalizedTerm String
+  category       String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, normalizedTerm])
+  @@index([userId])
+}
+
+/// --- 新增：每月預算設定（個人/群組視角皆可），以及類別→桶別覆寫 ---
+
+model BudgetSetting {
+  id         Int     @id @default(autoincrement())
+  userId     Int
+  /// 個人視角（true）或群組視角（false）
+  isPersonal Boolean @default(true)
+  /// 群組視角時才會有值；個人視角請保持 null
+  groupId    Int?
+  /// yyyy-MM，例如 "2025-09"
+  monthKey   String  @db.VarChar(7)
+
+  essentialPct  Int @default(50) // 必需比例
+  wantsPct      Int @default(30) // 想要比例
+  savingsPct    Int @default(20) // 儲蓄比例
+  plannedIncome Int @default(0) // 本月預定收入
+
+  createdAt DateTime @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  // 個人視角：同一使用者在同一 monthKey 僅允許一筆（不含 NULL）
+  @@unique([userId, monthKey, isPersonal])
+  // 群組視角：同一使用者、同一群組在同一 monthKey 僅允許一筆（groupId 在群組視角不為 NULL）
+  @@unique([userId, monthKey, groupId])
+  // 方便查詢
+  @@index([userId, monthKey])
+}
+
+model BucketMap {
+  id        Int          @id @default(autoincrement())
+  userId    Int
+  category  String
+  bucket    BudgetBucket
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 同一使用者對同一類別僅一筆覆寫
+  @@unique([userId, category])
+}
+
+// --- 新增：三桶分類（必需/想要/儲蓄） ---
+enum BudgetBucket {
+  essential
+  wants
+  savings
+}
+
+enum AccountKind {
+  cash
+  bank
+  credit_card
+  e_wallet
+  other
+}
+
+enum NotificationType {
+  repayment
+  alert
+  system
+  monthly
+}
