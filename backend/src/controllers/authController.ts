@@ -5,6 +5,10 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import nodemailer from 'nodemailer';
 import { JWT_SECRET, JWT_EXPIRES_IN, previewToken } from '../config/jwt';
+import { Resend } from 'resend';
+
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const EMAIL_FROM = process.env.EMAIL_FROM || `"Moneyko" <onboarding@resend.dev>`;
 
 const prisma = new PrismaClient();
 
@@ -23,35 +27,35 @@ const transporter = nodemailer.createTransport({
   debug: process.env.MAIL_DEBUG === '1',
 });
 
+async function sendEmail(to: string, subject: string, text: string, html?: string) {
+  if (resend) {
+    await resend.emails.send({ from: EMAIL_FROM, to, subject, text, html: html ?? `<p>${text}</p>` });
+    return;
+  }
+  await transporter.sendMail({ from: `"Moneyko" <${process.env.GMAIL_USER}>`, to, subject, text, html });
+}
+
 function normalizeEmail(s: string) {
   return (s || '').trim().toLowerCase();
 }
 
-async function createAndSendCode(userId: number, emailRaw: string) {
-  const email = normalizeEmail(emailRaw);
+// 產生驗證碼後寄信（你原本的流程，改成呼叫 sendEmail）
+async function createAndSendCode(userId: number, email: string) {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-  await prisma.emailVerification.create({
-    data: { email, code, userId, used: false, expiresAt },
-  });
+  await prisma.emailVerification.create({ data: { email, code, userId, used: false, expiresAt } });
 
   (async () => {
     try {
       console.log('[MAIL] start send to', email);
-      await transporter.sendMail({
-        from: `"Moneyko" <${process.env.GMAIL_USER}>`,
-        to: email,
-        subject: '帳號驗證碼',
-        text: `您的驗證碼為：${code}（10 分鐘內有效）`,
-      });
+      await sendEmail(email, '帳號驗證碼', `您的驗證碼：${code}（10 分鐘內有效）`);
       console.log('[MAIL] sent to', email);
     } catch (e: any) {
       console.error('[MAIL] send failed:', e?.message || e);
     }
   })();
 }
-
 async function ensureDefaultAccount(userId: number) {
   const hasAny = await prisma.account.findFirst({ where: { userId } });
   if (!hasAny) {
