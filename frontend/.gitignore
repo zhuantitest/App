@@ -1,0 +1,49 @@
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native build outputs
+android/
+ios/
+*.apk
+*.aar
+
+# Gradle / CocoaPods
+android/.gradle/
+android/local.properties
+ios/build/
+ios/Pods/
+ios/DerivedData/
+ios/*.xcodeproj/project.xcworkspace/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+*.xcuserstate
+
+# Metro
+.metro-health-check*
+
+# Debug logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+expo-debug.log
+
+# macOS
+.DS_Store
+*.pem
+
+# Environment files
+.env
+.env*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Example app
+app-example

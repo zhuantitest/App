@@ -1,0 +1,78 @@
+[33mcommit d88da106977b587bb64c5e8f39fec3cfdc86b5d3[m[33m ([m[1;36mHEAD[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;31mgithub/main[m[33m, [m[1;31mgithub/HEAD[m[33m)[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 18:20:08 2025 +0800
+
+    同步更新
+
+[33mcommit c4787cf8b8d27b055a7eb37048efdeba60a6db35[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 17:34:52 2025 +0800
+
+    新增圖表
+
+[33mcommit 7d26474ae46a632fa44e3ffa6e25e9b81cc64f44[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 16:32:53 2025 +0800
+
+    分帳頁功能新增
+
+[33mcommit 575c413ff2e2af14229c99eb3c863e842e3474ed[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 05:24:51 2025 +0800
+
+    分帳畫面更新
+
+[33mcommit b806efd9bf331dd8976c2a0724bd9463eb08843e[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 04:47:39 2025 +0800
+
+    建立群組代碼
+
+[33mcommit 7d75960871701e34a2bc0e4731d4a57c707c072f[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 03:48:20 2025 +0800
+
+    加入新增帳戶功能
+
+[33mcommit cdd6b52189a543893513db3b6cb4bc5d73f5b0e3[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 02:41:06 2025 +0800
+
+    更改並美化記帳紀錄
+
+[33mcommit 12b6a9b7549a84f43de34bfbaabd7b1997d5ef5a[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 02:14:55 2025 +0800
+
+    整合 AddTransactionScreen 分類新增/刪除 功能與 UI 美化
+
+[33mcommit f60e66e88eaeec59e7ebfac7c3a10aea729f6ad6[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 02:13:39 2025 +0800
+
+    整合 AddTransactionScreen 分類新增/刪除 功能與 UI 美化
+
+[33mcommit 6e5bda8c96bea6b5d443ec7c53ef529b1702f39b[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 01:15:25 2025 +0800
+
+    測試上傳
+
+[33mcommit 64ab906e5931491d14f1b411281af5ef5baba5c0[m
+Merge: 875b726 9f64b0c
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 00:58:44 2025 +0800
+
+    解決 README.md 合併衝突
+
+[33mcommit 875b726419826a60ce956a9d74c0392addff3d15[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Tue Jul 15 00:28:53 2025 +0800
+
+    完整上傳 BudgetApp 程式碼
+
+[33mcommit 9f64b0c3d45efcf468abcf6b54689c12d4b508ff[m
+Author: hu095 <kiki92090500@gmail.com>
+Date:   Mon Jul 14 22:28:06 2025 +0800
+
+    Initial commit
