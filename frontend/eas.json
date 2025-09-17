@@ -1,15 +1,26 @@
 {
-  "cli": { "version": ">= 12.0.0" },
+  "cli": { "version": ">= 13.0.0", "appVersionSource": "local" },
   "build": {
+    "development": {
+      "developmentClient": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://192.168.1.20:3001/api"
+      }
+    },
     "release-apk": {
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://app-production-2d55.up.railway.app/api",
+        "EAS_BUILD_DISABLE_MAVEN_CACHE": "1"
+      }
     },
     "production": {
-      "android": { }
+      "android": {},
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://app-production-2d55.up.railway.app/api"
+      }
     }
   },
-  "submit": {
-    "production": {}
-  }
+  "submit": { "production": {} }
 }

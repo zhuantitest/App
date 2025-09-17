@@ -2,11 +2,12 @@
   "expo": {
     "name": "BudgetApp",
     "slug": "BudgetApp",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "budgetapp",
     "userInterfaceStyle": "automatic",
+
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -17,6 +18,7 @@
         "NSMicrophoneUsageDescription": "需要麥克風來錄製語音與進行辨識。"
       }
     },
+
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -32,9 +34,10 @@
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.anonymous.budgetapp",
-      "versionCode": 1,
-      "usesCleartextTraffic": true
+      "versionCode": 2,
+      "usesCleartextTraffic": false
     },
+
     "plugins": [
       [
         "expo-image-picker",
@@ -50,19 +53,23 @@
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "kotlinVersion": "1.9.24",
             "enableProguardInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "gradleProperties": {
+              "org.gradle.jvmargs": "-Xmx6g -XX:+UseParallelGC -Dkotlin.daemon.jvm.options=-Xmx2g"
+            }
           }
         }
       ]
     ],
+
     "experiments": {
       "typedRoutes": true
     },
+
     "extra": {
-      "EXPO_PUBLIC_API_BASE_URL": "http://192.168.1.20:3001/api",
-      "eas": { "projectId": "ba99ca3e-3d90-466f-aa76-75b055341650" }
+      "EXPO_PUBLIC_API_BASE_URL": "https://app-production-2d55.up.railway.app/api",
+      "eas": { "projectId": "d110cb6c-0db5-4aa2-bdb8-79f5a3799b29" }
     }
   }
 }
