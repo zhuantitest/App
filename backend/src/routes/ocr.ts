@@ -1,9 +1,11 @@
+// src/routes/ocr.ts （頂部）
 // src/routes/ocr.ts
 import express from 'express';
 import multer from 'multer';
-import vision from '@google-cloud/vision';
+import * as vision from '@google-cloud/vision';  // ⬅ 改這行
 import { getCategory } from '../utils/classifier';
 import { CATEGORY_KEYWORDS, DRINK_TOKENS } from '../utils/keyword';
+
 
 const router = express.Router();
 
@@ -11,7 +13,37 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
 });
-const client = new vision.ImageAnnotatorClient();
+
+// 🔐 讀取 GCP 憑證（JSON / B64 / PATH）
+const credJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+const credB64  = process.env.GOOGLE_APPLICATION_CREDENTIALS_B64;
+const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
+const cred =
+  credJson ? JSON.parse(credJson) :
+  credB64  ? JSON.parse(Buffer.from(credB64, 'base64').toString('utf8')) :
+  null;
+
+const credSrc =
+  credJson ? 'ENV_JSON' :
+  credB64  ? 'ENV_B64'  :
+  credPath ? 'ENV_PATH' : 'NONE';
+
+console.log('[GCP][OCR:route] credential source:', credSrc);
+
+let client: vision.ImageAnnotatorClient;
+if (cred) {
+  client = new vision.ImageAnnotatorClient({
+    credentials: { client_email: cred.client_email, private_key: cred.private_key },
+    projectId: cred.project_id,
+  });
+} else if (credPath) {
+  // 若你真的提供 GOOGLE_APPLICATION_CREDENTIALS 指向檔案
+  client = new vision.ImageAnnotatorClient();
+} else {
+  // 不再讓它默默走 ADC（會噴你剛看到的錯）
+  throw new Error('GCP credentials missing for /ocr/receipt-items (set GOOGLE_APPLICATION_CREDENTIALS_JSON or _B64)');
+}
 
 /* ---------------- OCR 前處理工具 ---------------- */
 const toHalf = (s: string) =>

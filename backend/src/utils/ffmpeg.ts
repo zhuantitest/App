@@ -6,27 +6,22 @@ import ffmpegBin from '@ffmpeg-installer/ffmpeg';
 
 ffmpeg.setFfmpegPath(ffmpegBin.path);
 
-function tmpOut(srcPath: string, suffix: string) {
-  const ext = path.extname(srcPath);
-  const base = srcPath.slice(0, -ext.length);
-  return `${base}${suffix}.wav`;
-}
+export async function toLinear16Mono16k(inputPath: string): Promise<string> {
+  const out = path.join(
+    path.dirname(inputPath),
+    path.basename(inputPath, path.extname(inputPath)) + '.wav'
+  );
 
-// 轉 LINEAR16 / 16kHz / Mono，給 Google STT
-export function toLinear16Mono16k(srcPath: string): Promise<string> {
-  const outPath = tmpOut(srcPath, '-16k-mono');
+  try { fs.unlinkSync(out); } catch {}
+
   return new Promise((resolve, reject) => {
-    ffmpeg(srcPath)
-      .noVideo()
-      .audioCodec('pcm_s16le')  // LINEAR16
-      .audioChannels(1)         // Mono
-      .audioFrequency(16000)    // 16kHz
+    ffmpeg(inputPath)
+      .audioChannels(1)
+      .audioFrequency(16000)
+      .audioCodec('pcm_s16le') // LINEAR16
       .format('wav')
-      .on('end', () => resolve(outPath))
-      .on('error', (err) => {
-        try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch {}
-        reject(err);
-      })
-      .save(outPath);
+      .on('end', () => resolve(out))
+      .on('error', (err) => reject(err))
+      .save(out);
   });
 }

@@ -180,5 +180,3 @@ export const parseReceipt = async (req: Request, res: Response) => {
 
 // 舊路由若引用此名稱也能用
 export const parseReceiptController = parseReceipt;
-export const parseReceiptTextController = parseReceipt;
-
