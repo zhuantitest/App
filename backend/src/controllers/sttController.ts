@@ -7,28 +7,46 @@ import { parseSpokenExpense } from '../utils/spokenParser';
 import { hybridClassify } from '../utils/aiFilter';
 import { createRecordNotification } from './notificationController';
 
-const keyFileFromEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-const speechClient = keyFileFromEnv
-  ? new SpeechClient() // 使用 GOOGLE_APPLICATION_CREDENTIALS
-  : new SpeechClient({ keyFilename: './gcp-vision-key.json' }); // 後備路徑
+const cred =
+  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
+    ? JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON)
+    : process.env.GOOGLE_APPLICATION_CREDENTIALS_B64
+      ? JSON.parse(Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_B64, 'base64').toString('utf8'))
+      : null;
+
+const gcpOpts = cred
+  ? {
+      credentials: { client_email: cred.client_email, private_key: cred.private_key },
+      projectId: cred.project_id,
+    }
+  : {};
+
+const hasEnvPath = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
+const hasLocalKeyFile = !cred && !hasEnvPath && fs.existsSync('./gcp-vision-key.json');
+
+const speechClient =
+  cred
+    ? new SpeechClient(gcpOpts)
+    : hasEnvPath
+      ? new SpeechClient()
+      : hasLocalKeyFile
+        ? new SpeechClient({ keyFilename: './gcp-vision-key.json' })
+        : new SpeechClient();
 
 type SttAlternative = {
   transcript?: string;
   confidence?: number;
 };
 
-// 共用：把上傳檔轉成文字
 async function transcribeAudioInternal(file: Express.Multer.File): Promise<{
   text: string;
   confidence: number;
   alternatives: string[];
 }> {
-  // 轉檔為 16kHz / mono / linear16
   const converted = await toLinear16Mono16k(file.path);
-  console.log('[STT] using Google STT, file=', file?.originalname, 'envKey=', !!process.env.GOOGLE_APPLICATION_CREDENTIALS);
+  const src = cred ? 'ENV_JSON' : hasEnvPath ? 'ENV_PATH' : hasLocalKeyFile ? 'LOCAL_FILE' : 'DEFAULT';
+  console.log('[STT] using Google STT, file=', file?.originalname, 'credSrc=', src);
 
-
-  // 讀檔並送到 GCP STT
   const audioBytes = fs.readFileSync(converted).toString('base64');
   const [response] = await speechClient.recognize({
     audio: { content: audioBytes },
@@ -40,37 +58,31 @@ async function transcribeAudioInternal(file: Express.Multer.File): Promise<{
       enableWordConfidence: true,
       enableWordTimeOffsets: false,
       model: 'default',
-      useEnhanced: true, // 使用增強模型
+      useEnhanced: true,
     },
   });
 
-  // 清理暫存
   safeUnlink(file.path);
   safeUnlink(converted);
 
   const results = response.results ?? [];
 
-  // 主轉寫內容（取各段第一候選串接）
   const text = results
     .map((r) => r.alternatives?.[0]?.transcript ?? '')
     .join(' ')
     .trim();
 
-  // 計算整體信心度（取各段第一候選的 confidence）
   const confs = results
     .map((r) => r.alternatives?.[0]?.confidence)
     .filter((c): c is number => typeof c === 'number');
-  const avgConfidence = confs.length
-    ? confs.reduce((a, b) => a + b, 0) / confs.length
-    : 0;
+  const avgConfidence = confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : 0;
 
-  // 取得替代方案（每段從第 2 個候選開始扁平化）
   const altsPerResult = results.map((r) => (r.alternatives ?? []) as SttAlternative[]);
   const alternatives = altsPerResult
     .map((alts) => alts.slice(1).map((alt) => alt?.transcript?.trim()))
     .flat()
     .filter((t): t is string => typeof t === 'string' && t.length > 0)
-    .slice(0, 3); // 最多取 3 個替代方案
+    .slice(0, 3);
 
   return { text, confidence: avgConfidence, alternatives };
 }
@@ -91,7 +103,6 @@ export async function transcribeAudio(req: Request, res: Response) {
     const file = (req as any).file as Express.Multer.File | undefined;
     if (!file) return res.status(400).json({ message: '缺少上傳檔案 field: file' });
 
-    // 1) 語音→文字
     const { text, confidence: sttConfidence, alternatives } = await transcribeAudioInternal(file);
 
     if (!text || text.length === 0) {
@@ -101,10 +112,8 @@ export async function transcribeAudio(req: Request, res: Response) {
       });
     }
 
-    // 2) 智能解析金額與備註
     const parsedResult = parseSpokenExpense(text);
 
-    // 3) AI 分類（用 note；若 note 為空就退回用全文）
     let finalCategory = parsedResult.category;
     let categorySource = 'local';
 
@@ -120,10 +129,8 @@ export async function transcribeAudio(req: Request, res: Response) {
       }
     }
 
-    // 4) 計算整體信心度
     const overallConfidence = Math.round((sttConfidence + parsedResult.confidence) / 2);
 
-    // 5) 建立通知（如果解析成功）
     if (parsedResult.amount && parsedResult.note) {
       try {
         await createRecordNotification(userId, {
@@ -160,7 +167,6 @@ export async function transcribeAudio(req: Request, res: Response) {
   }
 }
 
-// 純文字 → 解析金額/備註 → 分類（不用上傳音檔）
 export async function sttFromText(req: Request, res: Response) {
   try {
     const userId = req.user?.userId;
@@ -171,10 +177,8 @@ export async function sttFromText(req: Request, res: Response) {
       return res.status(400).json({ message: 'text 必填' });
     }
 
-    // 解析口語：金額 + 備註
     const parsedResult = parseSpokenExpense(textRaw);
 
-    // 分類：優先用 note，沒有就用全文
     let finalCategory = parsedResult.category;
     let categorySource = 'local';
 
@@ -210,7 +214,6 @@ export async function sttFromText(req: Request, res: Response) {
   }
 }
 
-// 語音記帳快速建立
 export async function quickVoiceRecord(req: Request, res: Response) {
   try {
     const userId = req.user?.userId;
@@ -222,7 +225,6 @@ export async function quickVoiceRecord(req: Request, res: Response) {
       return res.status(400).json({ message: '缺少必要欄位 text 或 accountId' });
     }
 
-    // 解析語音內容
     const parsedResult = parseSpokenExpense(text);
 
     if (!parsedResult.amount || !parsedResult.note) {
@@ -232,7 +234,6 @@ export async function quickVoiceRecord(req: Request, res: Response) {
       });
     }
 
-    // AI 分類
     let finalCategory = parsedResult.category;
     if (!finalCategory) {
       try {
@@ -244,7 +245,6 @@ export async function quickVoiceRecord(req: Request, res: Response) {
       }
     }
 
-    // 建立記帳紀錄
     const { PrismaClient } = require('@prisma/client');
     const prisma = new PrismaClient();
 
@@ -261,7 +261,6 @@ export async function quickVoiceRecord(req: Request, res: Response) {
       },
     });
 
-    // 建立通知
     try {
       await createRecordNotification(userId, {
         amount: parsedResult.amount,

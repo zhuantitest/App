@@ -1,33 +1,32 @@
 // src/utils/ffmpeg.ts
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegPath from 'ffmpeg-static';
-import fs from 'fs';
 import path from 'path';
+import fs from 'fs';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegBin from '@ffmpeg-installer/ffmpeg';
 
-if (ffmpegPath) {
-  ffmpeg.setFfmpegPath(ffmpegPath);
+ffmpeg.setFfmpegPath(ffmpegBin.path);
+
+function tmpOut(srcPath: string, suffix: string) {
+  const ext = path.extname(srcPath);
+  const base = srcPath.slice(0, -ext.length);
+  return `${base}${suffix}.wav`;
 }
 
-export function ensureDir(dir: string) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
-
-export function toLinear16Mono16k(inputPath: string, outDir = 'uploads/audio'): Promise<string> {
-  ensureDir(outDir);
-  const outPath = path.join(
-    outDir,
-    path.basename(inputPath).replace(/\.[^.]+$/, '') + '_16k_mono.wav'
-  );
-
+// 轉 LINEAR16 / 16kHz / Mono，給 Google STT
+export function toLinear16Mono16k(srcPath: string): Promise<string> {
+  const outPath = tmpOut(srcPath, '-16k-mono');
   return new Promise((resolve, reject) => {
-    ffmpeg(inputPath)
-      .outputOptions([
-        '-acodec pcm_s16le', // linear16
-        '-ac 1',             // mono
-        '-ar 16000'          // 16kHz
-      ])
+    ffmpeg(srcPath)
+      .noVideo()
+      .audioCodec('pcm_s16le')  // LINEAR16
+      .audioChannels(1)         // Mono
+      .audioFrequency(16000)    // 16kHz
+      .format('wav')
       .on('end', () => resolve(outPath))
-      .on('error', reject)
+      .on('error', (err) => {
+        try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch {}
+        reject(err);
+      })
       .save(outPath);
   });
 }

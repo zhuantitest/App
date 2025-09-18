@@ -7,9 +7,6 @@ import nodemailer from 'nodemailer';
 import { JWT_SECRET, JWT_EXPIRES_IN, previewToken } from '../config/jwt';
 import { Resend } from 'resend';
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-const EMAIL_FROM = process.env.EMAIL_FROM || `"Moneyko" <onboarding@resend.dev>`;
-
 const prisma = new PrismaClient();
 
 const UNIFIED_LOGIN_ERROR = (process.env.UNIFIED_LOGIN_ERROR ?? '1') === '1';
@@ -27,35 +24,54 @@ const transporter = nodemailer.createTransport({
   debug: process.env.MAIL_DEBUG === '1',
 });
 
+// 需保留：import { Resend } from 'resend'
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
 async function sendEmail(to: string, subject: string, text: string, html?: string) {
   if (resend) {
-    await resend.emails.send({ from: EMAIL_FROM, to, subject, text, html: html ?? `<p>${text}</p>` });
+    console.log('[MAIL] using Resend API');
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM || 'Moneyko <onboarding@resend.dev>',
+      to,
+      subject,
+      text,
+      html: html ?? `<p>${text}</p>`,
+    });
+    if (error) {
+      console.error('[MAIL] resend error:', error?.message || error);
+      throw new Error(error?.message || 'Resend send failed');
+    }
     return;
   }
-  await transporter.sendMail({ from: `"Moneyko" <${process.env.GMAIL_USER}>`, to, subject, text, html });
+
+  // （可留作本機 SMTP 備援）
+  console.log('[MAIL] using Gmail SMTP (local/dev)');
+  const r = await transporter.sendMail({
+    from: process.env.EMAIL_FROM || `"Moneyko" <${process.env.GMAIL_USER}>`,
+    to,
+    subject,
+    text,
+    html: html ?? `<p>${text}</p>`,
+  });
+  console.log('[MAIL] nodemailer result:', r?.response || r);
 }
 
-function normalizeEmail(s: string) {
-  return (s || '').trim().toLowerCase();
-}
-
-// 產生驗證碼後寄信（你原本的流程，改成呼叫 sendEmail）
+// ✅ 修改過：確保寄信完成才結束
 async function createAndSendCode(userId: number, email: string) {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
   await prisma.emailVerification.create({ data: { email, code, userId, used: false, expiresAt } });
 
-  (async () => {
-    try {
-      console.log('[MAIL] start send to', email);
-      await sendEmail(email, '帳號驗證碼', `您的驗證碼：${code}（10 分鐘內有效）`);
-      console.log('[MAIL] sent to', email);
-    } catch (e: any) {
-      console.error('[MAIL] send failed:', e?.message || e);
-    }
-  })();
+  try {
+    console.log('[MAIL] start send to', email);
+    await sendEmail(email, '帳號驗證碼', `您的驗證碼：${code}（10 分鐘內有效）`);
+    console.log('[MAIL] sent to', email);
+  } catch (e: any) {
+    console.error('[MAIL] send failed:', e?.message || e);
+  }
 }
+
 async function ensureDefaultAccount(userId: number) {
   const hasAny = await prisma.account.findFirst({ where: { userId } });
   if (!hasAny) {
@@ -135,6 +151,10 @@ export const sendVerificationCode = async (req: Request, res: Response) => {
     return res.status(500).json({ message: '伺服器錯誤' });
   }
 };
+
+function normalizeEmail(s: string) {
+  return (s || '').trim().toLowerCase();
+}
 
 export const verifyCode = async (req: Request, res: Response) => {
   try {

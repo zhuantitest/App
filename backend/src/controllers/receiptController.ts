@@ -1,94 +1,182 @@
 // src/controllers/receiptController.ts
 import { Request, Response } from 'express';
 import fs from 'fs';
+import fsp from 'fs/promises';
 import path from 'path';
-import vision from '@google-cloud/vision';
+import sharp from 'sharp';
+import { ImageAnnotatorClient } from '@google-cloud/vision';
+import { getCategory } from '../utils/classifier';
 
-import { parseReceiptText } from '../services/parse-receipt'; // 只拿函式
-import { ParsedReceipt } from '../types/receipt';   
-
-
-const client = new vision.ImageAnnotatorClient({
-  keyFilename: './gcp-vision-key.json',
-});
-
-// Google Vision OCR
-async function extractTextFromImage(filePath: string): Promise<string> {
-  const [result] = await client.textDetection(filePath);
-  const detections = result.textAnnotations;
-  return detections && detections.length > 0 ? detections[0].description || '' : '';
+type ClassifierSource = 'keyword' | 'huggingface' | 'fallback';
+interface Item {
+  name: string;
+  quantity: number;
+  price: number;
+  category?: string;
+  categorySource?: 'local' | 'huggingface' | 'unknown';
 }
 
-export const parseReceiptController = async (req: Request, res: Response) => {
+function mapSource(source: ClassifierSource): Item['categorySource'] {
+  if (source === 'keyword') return 'local';
+  if (source === 'fallback') return 'unknown';
+  return 'huggingface';
+}
+
+type ROI = { x: number; y: number; w: number; h: number };
+
+function parseROI(raw?: any): ROI | null {
+  if (!raw) return null;
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: '未上傳檔案' });
+    const r = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const x = Math.max(0, Math.min(1, Number(r.x)));
+    const y = Math.max(0, Math.min(1, Number(r.y)));
+    const w = Math.max(0, Math.min(1, Number(r.w)));
+    const h = Math.max(0, Math.min(1, Number(r.h)));
+    if (!isFinite(x) || !isFinite(y) || !isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return null;
+    return { x, y, w, h };
+  } catch {
+    return null;
+  }
+}
+
+async function cropToTempByROI(srcPath: string, roi: ROI) {
+  const meta = await sharp(srcPath).metadata();
+  const W = meta.width || 0;
+  const H = meta.height || 0;
+  if (!W || !H) return null;
+
+  const left = Math.max(0, Math.round(roi.x * W));
+  const top = Math.max(0, Math.round(roi.y * H));
+  const width = Math.min(W - left, Math.round(roi.w * W));
+  const height = Math.min(H - top, Math.round(roi.h * H));
+
+  const dir = path.dirname(srcPath);
+  const tmp = path.join(
+    dir,
+    `${path.basename(srcPath, path.extname(srcPath))}-roi-${Date.now()}.jpg`
+  );
+
+  await sharp(srcPath).rotate().extract({ left, top, width, height }).normalize().jpeg({ quality: 85 }).toFile(tmp);
+  return tmp;
+}
+
+// ---------- GCP 憑證（JSON / B64 / 備援） ----------
+const cred =
+  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
+    ? JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON)
+    : process.env.GOOGLE_APPLICATION_CREDENTIALS_B64
+      ? JSON.parse(Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_B64, 'base64').toString('utf8'))
+      : null;
+
+const gcpOpts = cred
+  ? { credentials: { client_email: cred.client_email, private_key: cred.private_key }, projectId: cred.project_id }
+  : {};
+
+const client = new ImageAnnotatorClient(gcpOpts);
+
+// ---------- 主要邏輯 ----------
+async function parseWithVision(imgPath: string) {
+  const [result] = await client.textDetection(imgPath);
+  const detections = result.textAnnotations || [];
+  const ocrText = detections.length > 0 ? (detections[0].description || '') : '';
+  return { ocrText, detections };
+}
+
+export const parseReceipt = async (req: Request, res: Response) => {
+  const file = (req as any).file as Express.Multer.File | undefined;
+  if (!file) return res.status(400).json({ success: false, message: '缺少圖片檔案（field: file）' });
+
+  const originalPath = file.path;
+  const roi = parseROI(req.body?.roi);
+  let ocrPath = originalPath;
+  let roiTempPath: string | null = null;
+
+  try {
+    if (roi && /^image\//.test(file.mimetype)) {
+      const tmp = await cropToTempByROI(originalPath, roi).catch(() => null);
+      if (tmp) {
+        roiTempPath = tmp;
+        ocrPath = tmp;
+      }
     }
 
-    const imagePath = path.resolve(req.file.path);
-    const rawText = await extractTextFromImage(imagePath);
+    const { ocrText } = await parseWithVision(ocrPath);
+    if (!ocrText) return res.status(400).json({ success: false, message: 'OCR 無法辨識文字' });
 
-    // 使用新的 AI 增強解析功能
-    const userId = req.user?.userId;
-    const parsedReceipt: ParsedReceipt = await parseReceiptText(rawText, userId);
+    // 簡單的行清洗
+    const rawLines = ocrText
+      .split('\n')
+      .map((l) => l.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
 
-    return res.json({
-      success: true,
-      data: {
-        items: parsedReceipt.items,
-        totalAmount: parsedReceipt.totalAmount,
-        storeName: parsedReceipt.storeName,
-        date: parsedReceipt.date,
-        filteredCount: parsedReceipt.filteredCount,
-        totalCount: parsedReceipt.totalCount,
-        rawText, // 用於除錯
-      },
+    const blacklist = /(發票|統編|電話|客服|總計|合計|稅額|收銀機|交易序號|店號|桌號|品名單|應收|收據)/;
+    const lines = rawLines.filter((l) => !blacklist.test(l));
+
+    // 取可能是品項的行
+    const productLines = lines.filter((line) => {
+      const hasQtyXPrice = /\b(\d+)\s*[xX＊*]\s*(\d+(?:\.\d{1,2})?)\b/.test(line);
+      const hasTailPrice = /(\d+(?:\.\d{1,2})?)\s*(?:TX)?\s*$/.test(line);
+      const looksLikePhone = /\b09\d{8}\b/.test(line);
+      return !looksLikePhone && (hasQtyXPrice || hasTailPrice);
     });
-  } catch (error: any) {
-    console.error('收據解析錯誤:', error);
-    res.status(500).json({
-      success: false,
-      message: '伺服器錯誤',
-      error: error.message,
-    });
-  } finally {
-    if (req.file) fs.unlink(req.file.path, () => {});
-  }
-};
 
-// 只解析前端傳來的純文字（不經 OCR）
-export const parseReceiptTextController = async (req: Request, res: Response) => {
-  try {
-    const { text } = req.body;
+    const items: Item[] = [];
 
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({
-        success: false,
-        message: '請提供有效的文字內容',
+    for (const line of productLines) {
+      const mQty = line.match(/\b(\d+)\s*[xX＊*]\s*(\d+(?:\.\d{1,2})?)\b/);
+      const mTail = line.match(/(\d+(?:\.\d{1,2})?)\s*(?:TX)?\s*$/i);
+
+      let quantity = 1;
+      let price = 0;
+
+      if (mQty) {
+        quantity = parseInt(mQty[1], 10) || 1;
+        price = parseFloat(mQty[2]) || 0;
+      } else if (mTail) {
+        quantity = 1;
+        price = parseFloat(mTail[1]) || 0;
+      }
+
+      let name = line
+        .replace(/\b(\d+)\s*[xX＊*]\s*(\d+(?:\.\d{1,2})?)\b/g, '')
+        .replace(/(\d+(?:\.\d{1,2})?)\s*(?:TX)?\s*$/i, '')
+        .replace(/[：:，,]+$/, '')
+        .trim();
+
+      if (!name || name.length < 2) name = line.trim();
+
+      const { category, source } = await getCategory(name);
+
+      items.push({
+        name,
+        quantity: isFinite(quantity) ? Math.max(1, quantity) : 1,
+        price: isFinite(price) ? Math.max(0, Number(price.toFixed(2))) : 0,
+        category,
+        categorySource: mapSource(source as ClassifierSource),
       });
     }
 
-    const userId = req.user?.userId;
-    const parsedReceipt: ParsedReceipt = await parseReceiptText(text, userId);
+    const total = items.reduce((sum, it) => sum + it.price * it.quantity, 0);
 
     return res.json({
       success: true,
-      data: {
-        items: parsedReceipt.items,
-        totalAmount: parsedReceipt.totalAmount,
-        storeName: parsedReceipt.storeName,
-        date: parsedReceipt.date,
-        filteredCount: parsedReceipt.filteredCount,
-        totalCount: parsedReceipt.totalCount,
-      },
+      items,
+      total,
+      ocrText,
+      usedROI: !!roiTempPath,
     });
-  } catch (error: any) {
-    console.error('文字解析錯誤:', error);
-    res.status(500).json({
+  } catch (err: any) {
+    console.error('[Receipt OCR error]', err?.response?.data || err?.message || err);
+    return res.status(500).json({
       success: false,
       message: '伺服器錯誤',
-      error: error.message,
+      error: err?.message || String(err),
     });
+  } finally {
+    if (roiTempPath) await fsp.unlink(roiTempPath).catch(() => {});
+    fs.unlink(originalPath, () => {});
   }
 };
 
+// 舊路由若引用此名稱也能用
+export const parseReceiptController = parseReceipt;
