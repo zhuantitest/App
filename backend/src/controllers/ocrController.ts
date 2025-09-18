@@ -74,14 +74,23 @@ const gcpOpts = cred
 const hasEnvPath = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
 const hasLocalKeyFile = !cred && !hasEnvPath && fs.existsSync('./gcp-vision-key.json');
 
-const client =
-  cred
-    ? new ImageAnnotatorClient(gcpOpts)
-    : hasEnvPath
-      ? new ImageAnnotatorClient()
-      : hasLocalKeyFile
-        ? new ImageAnnotatorClient({ keyFilename: './gcp-vision-key.json' })
-        : new ImageAnnotatorClient();
+const credSrc =
+  cred ? (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON ? 'ENV_JSON' : 'ENV_B64')
+       : hasEnvPath ? 'ENV_PATH'
+       : hasLocalKeyFile ? 'LOCAL_FILE'
+       : 'NONE';
+console.log('[GCP][OCR] credential source:', credSrc);
+
+let client: ImageAnnotatorClient;
+if (cred) {
+  client = new ImageAnnotatorClient(gcpOpts);
+} else if (hasEnvPath) {
+  client = new ImageAnnotatorClient(); // GOOGLE_APPLICATION_CREDENTIALS 指向檔案
+} else if (hasLocalKeyFile) {
+  client = new ImageAnnotatorClient({ keyFilename: './gcp-vision-key.json' });
+} else {
+  throw new Error('GCP credentials missing for OCR (set GOOGLE_APPLICATION_CREDENTIALS_JSON or _B64)');
+}
 
 export const parseOcr = async (req: Request, res: Response) => {
   const file = req.file;

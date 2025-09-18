@@ -24,14 +24,24 @@ const gcpOpts = cred
 const hasEnvPath = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
 const hasLocalKeyFile = !cred && !hasEnvPath && fs.existsSync('./gcp-vision-key.json');
 
-const speechClient =
-  cred
-    ? new SpeechClient(gcpOpts)
-    : hasEnvPath
-      ? new SpeechClient()
-      : hasLocalKeyFile
-        ? new SpeechClient({ keyFilename: './gcp-vision-key.json' })
-        : new SpeechClient();
+const sttCredSrc =
+  cred ? (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON ? 'ENV_JSON' : 'ENV_B64')
+       : hasEnvPath ? 'ENV_PATH'
+       : hasLocalKeyFile ? 'LOCAL_FILE'
+       : 'NONE';
+console.log('[GCP][STT] credential source:', sttCredSrc);
+
+let speechClient: SpeechClient;
+if (cred) {
+  speechClient = new SpeechClient(gcpOpts);
+} else if (hasEnvPath) {
+  speechClient = new SpeechClient(); // GOOGLE_APPLICATION_CREDENTIALS 指向檔案
+} else if (hasLocalKeyFile) {
+  speechClient = new SpeechClient({ keyFilename: './gcp-vision-key.json' });
+} else {
+  throw new Error('GCP credentials missing for STT (set GOOGLE_APPLICATION_CREDENTIALS_JSON or _B64)');
+}
+
 
 type SttAlternative = {
   transcript?: string;
