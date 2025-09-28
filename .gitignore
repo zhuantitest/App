@@ -1,0 +1,35 @@
+﻿# Node modules
+node_modules/
+**/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & secrets
+*.env
+backend/gcp-vision-key.json
+
+# Uploads / temp
+backend/uploads/
+backend/.expo/
+frontend/.expo/
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# Prisma migrations (SQL 可選擇要不要上傳)
+backend/prisma/migrations/**/migration.sql
+backend/prisma/migrations/migration_lock.toml
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE/editor
+.vscode/
+.idea/

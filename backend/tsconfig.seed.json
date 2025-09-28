@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",                // 包含整個專案
+    "outDir": "./dist-seed",       // 不要跟 src 混在一起
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "include": ["prisma/seed.ts"]
+}

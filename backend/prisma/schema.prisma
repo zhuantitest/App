@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  email              String              @unique
+  password           String
+  createdAt          DateTime            @default(now())
+  isVerified         Boolean             @default(false)
+  accounts           Account[]
+  emailVerifications EmailVerification[]
+  groups             GroupMember[]
+  notifications      Notification[]
+  records            Record[]
+  splitsPaid         Split[]             @relation("PaidBy")
+  splitParticipants  SplitParticipant[]
+  unclassifiedNotes  UnclassifiedNote[]
+}
+
+model EmailVerification {
+  id        Int      @id @default(autoincrement())
+  email     String
+  code      String
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userId    Int
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, createdAt])
+  @@index([email, used])
+  @@index([userId])
+}
+
+model Group {
+  id        Int           @id @default(autoincrement())
+  name      String
+  joinCode  String?       @unique
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @default(now()) @updatedAt
+  members   GroupMember[]
+  records   Record[]
+  splits    Split[]
+}
+
+model GroupMember {
+  id      Int    @id @default(autoincrement())
+  groupId Int
+  userId  Int
+  role    String @default("member")
+  group   Group  @relation(fields: [groupId], references: [id])
+  user    User   @relation(fields: [userId], references: [id])
+
+  @@unique([groupId, userId])
+  @@index([userId], map: "GroupMember_userId_fkey")
+}
+
+model Account {
+  id                Int          @id @default(autoincrement())
+  name              String
+  type              String
+  balance           Float        @default(0)
+  creditLimit       Float?
+  currentCreditUsed Float?       @default(0)
+  allowanceDay      Int?
+  userId            Int
+  accountNumber     String?
+  bankCode          String?
+  bankName          String?
+  billingDay        Int?
+  branchName        String?
+  cardIssuer        String?
+  cardLast4         String?
+  cardNetwork       String?
+  kind              AccountKind?
+  paymentDueDay     Int?
+  user              User         @relation(fields: [userId], references: [id])
+  records           Record[]
+
+  @@unique([userId, bankCode, accountNumber])
+  @@unique([userId, cardIssuer, cardLast4])
+  @@index([userId, kind])
+  @@index([userId, type])
+}
+
+model Record {
+  id            Int      @id @default(autoincrement())
+  amount        Float
+  note          String
+  category      String
+  createdAt     DateTime @default(now())
+  paymentMethod String
+  accountId     Int
+  groupId       Int?
+  userId        Int
+  imageUrl      String?
+  quantity      Int      @default(1)
+  account       Account  @relation(fields: [accountId], references: [id])
+  group         Group?   @relation(fields: [groupId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([accountId], map: "Record_accountId_fkey")
+  @@index([groupId], map: "Record_groupId_fkey")
+  @@index([userId], map: "Record_userId_fkey")
+}
+
+model Split {
+  id           Int                @id @default(autoincrement())
+  groupId      Int
+  amount       Float
+  description  String?
+  dueType      String
+  dueDate      DateTime?
+  isSettled    Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  paidById     Int
+  monthKey     String?
+  group        Group              @relation(fields: [groupId], references: [id])
+  paidBy       User               @relation("PaidBy", fields: [paidById], references: [id])
+  participants SplitParticipant[]
+
+  @@index([groupId], map: "Split_groupId_fkey")
+  @@index([paidById], map: "Split_paidById_fkey")
+}
+
+model SplitParticipant {
+  id      Int     @id @default(autoincrement())
+  splitId Int
+  userId  Int
+  amount  Float
+  isPaid  Boolean @default(false)
+  split   Split   @relation(fields: [splitId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([splitId, userId])
+  @@index([userId], map: "SplitParticipant_userId_fkey")
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  message   String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "Notification_userId_fkey")
+}
+
+model UnclassifiedNote {
+  id        Int      @id @default(autoincrement())
+  note      String
+  createdAt DateTime @default(now())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "UnclassifiedNote_userId_fkey")
+}
+
+model UserLexicon {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  term           String
+  normalizedTerm String
+  category       String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, normalizedTerm])
+  @@index([userId])
+}
+
+enum AccountKind {
+  cash
+  bank
+  credit_card
+  e_wallet
+  other
+}
+
+enum NotificationType {
+  repayment
+  alert
+  system
+  monthly
+}
