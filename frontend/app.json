@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "BudgetApp",
+    "slug": "BudgetApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "budgetapp",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "允許 BudgetApp 使用相機拍攝收據以自動帶入金額。",
+        "NSPhotoLibraryUsageDescription": "允許 BudgetApp 存取相簿以上傳收據。",
+        "NSFaceIDUsageDescription": "允許使用 Face ID 解鎖應用程式。",
+        "NSSpeechRecognitionUsageDescription": "需要語音辨識來幫你快速輸入記帳資料。",
+        "NSMicrophoneUsageDescription": "需要麥克風來錄製語音與進行辨識。"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.budgetapp"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "允許 BudgetApp 存取相簿以上傳收據。",
+          "cameraPermission": "允許 BudgetApp 使用相機拍攝收據。"
+        }
+      ],
+      "expo-speech-recognition",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "kotlinVersion": "1.9.24"
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ba99ca3e-3d90-466f-aa76-75b055341650"
+      }
+    }
+  }
+}
